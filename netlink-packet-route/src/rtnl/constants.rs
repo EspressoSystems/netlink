@@ -329,6 +329,11 @@ pub const TCA_STATS_APP: u16 = 4;
 pub const TCA_STATS_RATE_EST64: u16 = 5;
 pub const TCA_STATS_PAD: u16 = 6;
 pub const TCA_STATS_BASIC_HW: u16 = 7;
+pub const TCA_NETEM_CORR: u16 = 1;
+pub const TCA_NETEM_DELAY_DIST: u16 = 2;
+pub const TCA_NETEM_REORDER: u16 = 3;
+pub const TCA_NETEM_CORRUPT: u16 = 4;
+pub const TCA_NETEM_LOSS: u16 = 5;
 
 pub const NDTA_UNSPEC: u16 = 0;
 pub const NDTA_NAME: u16 = 1;

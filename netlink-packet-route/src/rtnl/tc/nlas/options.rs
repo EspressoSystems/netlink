@@ -8,6 +8,8 @@ use crate::{
     DecodeError,
 };
 
+use super::netem;
+
 #[derive(Debug, PartialEq, Eq, Clone)]
 pub enum TcOpt {
     // Qdisc specific options

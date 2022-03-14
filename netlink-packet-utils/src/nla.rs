@@ -175,8 +175,8 @@ impl<'buffer, T: AsRef<[u8]> + AsMut<[u8]> + ?Sized> NlaBuffer<&'buffer mut T> {
 
 #[derive(Debug, PartialEq, Eq, Clone)]
 pub struct DefaultNla {
-    kind: u16,
-    value: Vec<u8>,
+    pub kind: u16,
+    pub value: Vec<u8>,
 }
 
 impl Nla for DefaultNla {

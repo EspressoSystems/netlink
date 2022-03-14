@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: MIT
 
 use futures::stream::StreamExt;
+use netlink_packet_route::{tc::TcOpt, nlas::{DefaultNla, NlaBuffer}, TCA_OPTIONS, traits::Parseable, TCA_CHAIN, TCA_NETEM_CORR, TCA_NETEM_REORDER, TCA_NETEM_CORRUPT, TCA_NETEM_LOSS, DecodeError};
+use byteorder::{NativeEndian, ByteOrder};
 
 use crate::{
     packet::{
@@ -16,6 +18,72 @@ use crate::{
     Error,
     Handle,
 };
+
+/// convert from percentage (value 0-100) to value
+/// expected by nla buffer
+#[inline(always)]
+fn percent_to_buffer(p: u32) -> u32 {
+    ((1 << 31) / 50) * p
+}
+
+
+#[derive(Clone, Debug)]
+pub struct NetemQdisc {
+    config: TcNetemQopt,
+    delay: Option<TcNetemDelay>,
+    correlations: Option<TcNetemCorrelations>,
+    corruption: Option<TcNetemCorrupt>,
+    reorder: Option<TcNetemReorder>,
+}
+
+impl Default for NetemQdisc {
+    fn default() -> Self {
+        Self { config: Default::default(), delay: Some(Default::default()), correlations: Some(Default::default()), corruption: Some(Default::default()), reorder: Some(Default::default()), }
+    }
+}
+
+#[derive(Clone, Copy, Debug)]
+pub struct TcNetemQopt {
+    /// limit of number of packets as u32
+    pub limit: u32,
+    /// loss as percentage
+    pub loss: u32,
+    /// gap between packets
+    pub gap: u32,
+    /// duplicate packets as %
+    pub duplicate: u32,
+}
+
+impl Default for TcNetemQopt {
+    fn default() -> Self {
+        Self { limit: 10240, loss: 0, gap: 0, duplicate: 0 }
+    }
+}
+
+#[derive(Default, Clone, Copy, Debug)]
+pub struct TcNetemDelay {
+    delay: u64,
+    stddev: u64,
+}
+
+#[derive(Default, Clone, Copy, Debug)]
+pub struct TcNetemCorrelations {
+    delay_corr: u32,
+    loss_corr: u32,
+    dup_corr: u32,
+}
+
+#[derive(Default, Clone, Copy, Debug)]
+pub struct TcNetemReorder {
+    prob: u32,
+    corr: u32,
+}
+
+#[derive(Default, Clone, Copy, Debug)]
+pub struct TcNetemCorrupt {
+    prob: u32,
+    corr: u32,
+}
 
 pub struct QDiscNewRequest {
     handle: Handle,
@@ -42,6 +110,7 @@ impl QDiscNewRequest {
 
         let mut req = NetlinkMessage::from(RtnlMessage::NewQueueDiscipline(message));
         req.header.flags = NLM_F_ACK | flags;
+        req.finalize();
 
         let mut response = handle.request(req)?;
         while let Some(message) = response.next().await {
@@ -80,11 +149,135 @@ impl QDiscNewRequest {
             .push(nlas::Nla::Kind("ingress".to_string()));
         self
     }
+
+    /// Create a new netem qdisc
+    pub fn netem(mut self, opts: NetemQdisc) -> Result<Self, DecodeError> {
+        let mut nlas = Vec::new();
+        assert_eq!(self.message.header.parent, TC_H_UNSPEC);
+        self.message.header.parent = TC_H_ROOT;
+        self.message
+            .nlas
+            .push(nlas::Nla::Kind("netem".to_string()));
+
+        let mut raw_buf: Vec<u8> = vec![0; 24];
+        NativeEndian::write_u16(&mut raw_buf[0..2], 24);
+        // limit
+        NativeEndian::write_u32(&mut raw_buf[4..8], opts.config.limit);
+        // loss %
+        NativeEndian::write_u32(&mut raw_buf[8..12], ((1 << 31) / 50) * opts.config.loss);
+        // gap (as u32)
+        NativeEndian::write_u32(&mut raw_buf[12..16], opts.config.gap);
+        // duplicate
+        NativeEndian::write_u32(&mut raw_buf[16..20], ((1 << 31) / 50) * opts.config.duplicate);
+        // irrelevant field
+        NativeEndian::write_u32(&mut raw_buf[20..24], 0);
+        let mut buf = NlaBuffer::new_checked(raw_buf.as_mut_slice())?;
+        buf.set_kind(TCA_OPTIONS);
+        let nla = DefaultNla {
+            kind: buf.kind(),
+            value: buf.value_mut().to_vec()
+        };
+        nlas.push(TcOpt::Other(nla));
+
+        if let Some(correlations) = opts.correlations {
+            // correlations/jitter
+            let buf_size = 16;
+            let mut raw_buf: Vec<u8> = vec![0; buf_size];
+            NativeEndian::write_u16(&mut raw_buf[0..2], buf_size as u16);
+            // delay jitter %
+            NativeEndian::write_u32(&mut raw_buf[4..8], percent_to_buffer(correlations.delay_corr));
+            // loss % jitter
+            NativeEndian::write_u32(&mut raw_buf[8..12], percent_to_buffer(correlations.loss_corr));
+            // duplicate % jitter
+            NativeEndian::write_u32(&mut raw_buf[12..16], percent_to_buffer(correlations.dup_corr));
+
+            let mut buf = NlaBuffer::new_checked(raw_buf.as_mut_slice())?;
+            buf.set_kind(TCA_NETEM_CORR);
+            let nla = DefaultNla {
+                kind: buf.kind(),
+                value: buf.value_mut().to_vec()
+            };
+            nlas.push(TcOpt::Other(nla));
+        }
+
+        if let Some(reorder) = opts.reorder {
+            let buf_size = 16;
+            // reorderings
+            let mut raw_buf: Vec<u8> = vec![0; buf_size];
+            // bufsize
+            NativeEndian::write_u16(&mut raw_buf[0..2], buf_size as u16);
+            // reordered (as %)
+            NativeEndian::write_u32(&mut raw_buf[4..8], percent_to_buffer(reorder.prob));
+            // reordered jitter (as %)
+            NativeEndian::write_u32(&mut raw_buf[8..12], percent_to_buffer(reorder.corr));
+
+            let mut buf = NlaBuffer::new_checked(raw_buf.as_mut_slice())?;
+            buf.set_kind(TCA_NETEM_REORDER);
+            let nla = DefaultNla {
+                kind: buf.kind(),
+                value: buf.value_mut().to_vec()
+            };
+            nlas.push(TcOpt::Other(nla));
+
+        }
+
+        // corruption
+        if let Some(corrupt) = opts.corruption {
+            let buf_size = 16;
+            let mut raw_buf: Vec<u8> = vec![0; buf_size];
+            NativeEndian::write_u16(&mut raw_buf[0..2], buf_size as u16);
+            //  corrupted (as %)
+            NativeEndian::write_u32(&mut raw_buf[4..8], percent_to_buffer(corrupt.prob));
+            //  corrupted jitter (as %)
+            NativeEndian::write_u32(&mut raw_buf[8..12], percent_to_buffer(corrupt.corr));
+            let mut buf = NlaBuffer::new_checked(raw_buf.as_mut_slice())?;
+            buf.set_kind(TCA_NETEM_CORRUPT);
+            let nla = DefaultNla {
+                kind: buf.kind(),
+                value: buf.value_mut().to_vec()
+            };
+            nlas.push(TcOpt::Other(nla));
+        }
+
+        if let Some(delay) = opts.delay {
+            let buf_size = 16;
+            // set delay
+            let mut raw_buf: Vec<u8> = vec![0; buf_size];
+            NativeEndian::write_u16(&mut raw_buf[0..2], buf_size as u16);
+            NativeEndian::write_u64(&mut raw_buf[4..12], delay.stddev);
+            let mut buf = NlaBuffer::new_checked(raw_buf.as_mut_slice())?;
+            buf.set_kind(10);
+            let nla = DefaultNla {
+                kind: buf.kind(),
+                value: buf.value_mut().to_vec()
+            };
+            nlas.push(TcOpt::Other(nla));
+            // set delay stddev
+            let mut raw_buf: Vec<u8> = vec![0; buf_size];
+            NativeEndian::write_u16(&mut raw_buf[0..2], buf_size as u16);
+            NativeEndian::write_u64(&mut raw_buf[4..12], delay.delay);
+
+            let mut buf = NlaBuffer::new_checked(raw_buf.as_mut_slice())?;
+            buf.set_kind(11);
+            let nla = DefaultNla {
+                kind: buf.kind(),
+                value: buf.value_mut().to_vec()
+            };
+            nlas.push(TcOpt::Other(nla));
+        }
+
+
+        self.message
+            .nlas
+            .push(nlas::Nla::Options(nlas));
+
+        Ok(self)
+    }
 }
 
 #[cfg(test)]
 mod test {
-    use std::{fs::File, os::unix::io::AsRawFd, path::Path};
+    use std::{fs::File, os::unix::io::AsRawFd, path::Path, time::Duration};
 
     use futures::stream::TryStreamExt;
     use nix::sched::{setns, CloneFlags};
@@ -123,7 +316,7 @@ mod test {
             // entry new ns
             let ns_path = Path::new(NETNS_PATH);
             let file = File::open(ns_path.join(path)).unwrap();
-            setns(file.as_raw_fd(), CloneFlags::CLONE_NEWNET).unwrap();
+            // setns(file.as_raw_fd(), CloneFlags::CLONE_NEWNET).unwrap();
 
             Self {
                 path: path.to_string(),
@@ -134,7 +327,6 @@ mod test {
     }
     impl Drop for Netns {
         fn drop(&mut self) {
-            println!("exit ns: {}", self.path);
             setns(self.last.as_raw_fd(), CloneFlags::CLONE_NEWNET).unwrap();
 
             let ns_path = Path::new(NETNS_PATH).join(&self.path);
@@ -170,7 +362,73 @@ mod test {
         (handle, link.unwrap(), netns)
     }
 
-    async fn test_async_new_qdisc() {
+    async fn test_async_new_qdisc_netem() {
+        let (handle, link, netem) = setup_env().await;
+
+        println!("idx: {:?}", link.header.index);
+
+        let opts = NetemQdisc::default();
+
+
+        handle
+            .qdisc()
+            .add(link.header.index as i32)
+            .netem(opts)
+            .unwrap()
+            .execute()
+            .await
+            .unwrap();
+
+        let mut qdiscs_iter = handle
+            .qdisc()
+            .get()
+            .execute();
+
+        println!("link header indx: {:?}", link.header.index);
+
+        let mut found = false;
+
+        while let Some(nl_msg) = qdiscs_iter.try_next().await.unwrap() {
+            println!("nl_msg {:?}", nl_msg);
+            if nl_msg.header.index == link.header.index as i32 {
+                found = true;
+                break
+            }
+        }
+
+        if !found {
+            panic!("netem qdisc not added");
+        }
+
+        handle
+            .qdisc()
+            .del(link.header.index as i32)
+            .execute()
+            .await
+            .unwrap();
+
+        let mut qdiscs_iter = handle
+            .qdisc()
+            .get()
+            .execute();
+
+        let mut found_deleted_qdisc = false;
+
+        while let Some(nl_msg) = qdiscs_iter.try_next().await.unwrap() {
+            if nl_msg.header.index == link.header.index as i32 { 
+                found_deleted_qdisc = true;
+                break
+            }
+        }
+        if found_deleted_qdisc {
+            panic!("qdisc did not get deleted");
+        }
+        drop(netem);
+        drop(link);
+
+    }
+
+    async fn test_async_new_qdisc_ingress() {
         let (handle, test_link, _netns) = setup_env().await;
         handle
             .qdisc()
@@ -207,7 +465,12 @@ mod test {
     }
 
     #[test]
-    fn test_new_qdisc() {
-        Runtime::new().unwrap().block_on(test_async_new_qdisc());
+    fn test_new_qdisc_ingress() {
+        Runtime::new().unwrap().block_on(test_async_new_qdisc_ingress());
+    }
+
+    #[test]
+    fn test_new_qdisc_netem() {
+        Runtime::new().unwrap().block_on(test_async_new_qdisc_netem());
     }
 }

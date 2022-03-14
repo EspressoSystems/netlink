@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: MIT
 use futures::StreamExt;
+use netlink_packet_route::tc::constants::TC_H_ROOT;
 
 use crate::{
     packet::{NetlinkMessage, RtnlMessage, TcMessage, NLM_F_ACK, NLM_F_REQUEST},
@@ -15,7 +16,9 @@ pub struct QDiscDelRequest {
 
 impl QDiscDelRequest {
     pub(crate) fn new(handle: Handle, message: TcMessage) -> Self {
-        QDiscDelRequest { handle, message }
+        let mut result = QDiscDelRequest { handle, message };
+        result.message.header.parent = TC_H_ROOT;
+        result
     }
 
     // Execute the request

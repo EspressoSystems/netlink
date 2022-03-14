@@ -121,11 +121,18 @@ impl<'a, T: AsRef<[u8]> + 'a> Parseable<TcMessageBuffer<&'a T>> for Vec<Nla> {
                 TCA_OPTIONS => {
                     let mut nlas = vec![];
                     for nla in NlasIterator::new(payload) {
-                        let nla = nla.context("invalid TCA_OPTIONS")?;
-                        nlas.push(
-                            TcOpt::parse_with_param(&nla, &kind)
-                                .context("failed to parse TCA_OPTIONS")?,
-                        )
+                        match nla.context("invalid TCA_OPTIONS") {
+                            Ok(nla) => {
+                                nlas.push(
+                                    TcOpt::parse_with_param(&nla, &kind)
+                                        .context("failed to parse TCA_OPTIONS").unwrap(),
+                                )
+                            },
+                            Err(_) => {
+                                //FIXME bad solution to this problem
+                                continue
+                            }
+                        }
                     }
                     Nla::Options(nlas)
                 }
