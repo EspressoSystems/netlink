@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MIT
 
 use futures::stream::StreamExt;
-use netlink_packet_route::{tc::TcOpt, nlas::{DefaultNla, NlaBuffer}, TCA_OPTIONS, traits::Parseable, TCA_CHAIN, TCA_NETEM_CORR, TCA_NETEM_REORDER, TCA_NETEM_CORRUPT, TCA_NETEM_LOSS, DecodeError};
+use netlink_packet_route::{tc::TcOpt, nlas::{DefaultNla, NlaBuffer}, TCA_OPTIONS, TCA_NETEM_CORR, TCA_NETEM_REORDER, TCA_NETEM_CORRUPT, DecodeError};
 use byteorder::{NativeEndian, ByteOrder};
 
 use crate::{
