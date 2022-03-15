@@ -18,8 +18,10 @@ rich_nlas = []
 anyhow = "1.0.31"
 byteorder = "1.3.2"
 libc = "0.2.66"
-netlink-packet-core = "0.4"
-netlink-packet-utils = "0.5"
+netlink-packet-core = { path = "../netlink-packet-core", version = "*" }
+netlink-packet-utils = { path = "../netlink-packet-utils", version = "*" }
+netlink-proto = { path = "../netlink-proto", default-features = false, version = "*" }
+netlink-packet-generic = { path = "../netlink-packet-generic", version = "*" }
 bitflags = "1.2.1"
 
 [[example]]
