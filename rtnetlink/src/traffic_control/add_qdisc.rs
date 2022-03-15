@@ -29,11 +29,11 @@ fn percent_to_buffer(p: u32) -> u32 {
 
 #[derive(Clone, Debug)]
 pub struct NetemQdisc {
-    config: TcNetemQopt,
-    delay: Option<TcNetemDelay>,
-    correlations: Option<TcNetemCorrelations>,
-    corruption: Option<TcNetemCorrupt>,
-    reorder: Option<TcNetemReorder>,
+    pub config: TcNetemQopt,
+    pub delay: Option<TcNetemDelay>,
+    pub correlations: Option<TcNetemCorrelations>,
+    pub corruption: Option<TcNetemCorrupt>,
+    pub reorder: Option<TcNetemReorder>,
 }
 
 impl Default for NetemQdisc {
@@ -62,27 +62,27 @@ impl Default for TcNetemQopt {
 
 #[derive(Default, Clone, Copy, Debug)]
 pub struct TcNetemDelay {
-    delay: u64,
-    stddev: u64,
+    pub delay: u64,
+    pub stddev: u64,
 }
 
 #[derive(Default, Clone, Copy, Debug)]
 pub struct TcNetemCorrelations {
-    delay_corr: u32,
-    loss_corr: u32,
-    dup_corr: u32,
+    pub delay_corr: u32,
+    pub loss_corr: u32,
+    pub dup_corr: u32,
 }
 
 #[derive(Default, Clone, Copy, Debug)]
 pub struct TcNetemReorder {
-    prob: u32,
-    corr: u32,
+    pub prob: u32,
+    pub corr: u32,
 }
 
 #[derive(Default, Clone, Copy, Debug)]
 pub struct TcNetemCorrupt {
-    prob: u32,
-    corr: u32,
+    pub prob: u32,
+    pub corr: u32,
 }
 
 pub struct QDiscNewRequest {
