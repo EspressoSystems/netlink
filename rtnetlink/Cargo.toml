@@ -33,6 +33,6 @@ async-global-executor = { version = "2.0.2", optional = true }
 
 [dev-dependencies]
 env_logger = "0.8.2"
-ipnetwork = "0.18.0"
+ipnetwork = "0.19.0"
 tokio = { version = "1.0.1", features = ["macros", "rt", "rt-multi-thread"] }
 async-std = { version = "1.9.0", features = ["attributes"]}
