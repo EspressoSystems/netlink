@@ -32,7 +32,7 @@ criterion = "0.3.0"
 pcap-file = "1.1.1"
 lazy_static = "1.4.0"
 netlink-sys = "0.8"
-pretty_assertions = "0.7.2"
+pretty_assertions = "1.2.1"
 
 [[bench]]
 name = "link_message"
