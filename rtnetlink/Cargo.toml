@@ -27,7 +27,7 @@ netlink-packet-utils = { path = "../netlink-packet-utils", version = "*" }
 netlink-packet-core = { path = "../netlink-packet-core", version = "*" }
 netlink-packet-generic = { path = "../netlink-packet-generic", version = "*" }
 netlink-proto = { path = "../netlink-proto", default-features = false, version = "*" }
-nix = "0.22.0"
+nix = "0.24.2"
 tokio = { version = "1.0.1", features = ["rt"], optional = true}
 async-global-executor = { version = "2.0.2", optional = true }
 
