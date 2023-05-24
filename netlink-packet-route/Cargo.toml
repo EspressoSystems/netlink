@@ -28,7 +28,7 @@ bitflags = "1.2.1"
 name = "dump_packet_links"
 
 [dev-dependencies]
-criterion = "0.3.0"
+criterion = "0.5.0"
 pcap-file = "1.1.1"
 lazy_static = "1.4.0"
 netlink-sys = "0.8"
